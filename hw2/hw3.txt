@@ -1,0 +1,44 @@
+os1中的task1和task2的堆栈的起始和终止地址是什么？
+题目错了。。。是task0和task1
+task0是系统分配的栈，起始从返回函数开始算的话，就是
+JSR   0xfffffdf4 (TO 0x74)
+这一句生成的sp为栈底了
+
+task1是手动分配的栈，
+
+root/usr/os/os1.c  82:   task1_sp = &task1_stack;
+000001d4  00000008  LEAG  0x0 (D 0)
+000001d8  0000cc45  SG    0xcc (D 204)
+root/usr/os/os1.c  83:   task1_sp += 50;
+000001dc  0000cc15  LG    0xcc (D 204)
+000001e0  0000c854  ADDI  0xc8 (D 200)
+000001e4  0000cc45  SG    0xcc (D 204)
+task1_stack+50就是栈底了。
+
+至于栈顶，分别就是task1_sp和task0_sp了。
+
+os1是如何实现任务切换的？
+os1中有两个栈，一个是一开始分配出来的栈task1，一个是在程序运行中生成的栈task0。
+分配taks1的时候可以看到，是和调用函数的分配栈一样的方式。
+当asm(STI)之后，可以看到一开始运行task0，然后一旦进入trap（通过之前设置过得stmr(5000)和ivec(alltraps)）。
+观察swtch函数，如果是swtch(task0,task1)，那么它会用task0_sp存储下sp，然后将sp设置为task1_sp。这样相当于存储了task0的当前运行状态，同时将要开始运行task1。
+至于调用task1的方式，就先先进入trapret，然后POPC，POPB，POPA，然后利用RTI返回到task1,就运行了task1了。
+
+os3中的task1和task2的堆栈的起始和终止地址是什么？
+task0和task1的堆栈就是task0_stack和task1_stack，栈底时task0_stack+1000和task1_stack+1000，栈顶就是task0_sp和task1_sp了。
+当然，一开始不是上面这种情况，一开始sp是在task0_kstack和task1_kstack上面的，所以运行栈是在这两个上，运行了一次task0后task0的栈顶就到了task0_stask上去了，task1也是一样的。
+
+os3是如何实现任务切换的？
+os3的任务切换由两部分组成。一开始分配了两个kstack，这个kstack的作用是用于启动两个程序一次，然后之后sp运行的栈就会时task0_stack和task1_stack了。
+一开始，通过
+
+asm(LL, 4); // a = kstack
+asm(SSP);   // sp = a
+asm(LEV);
+pc会到trapret去，这里会把栈顶的task0_stack+1000作为运行栈，然后POP若干元素，RTI到task0,开始运行task0。
+
+而切换是和os1一样的通过分时，使用swtch切换到另一个task。
+要注意，每个task第一次都会在kstask上运行而不是stack上，可以理解为kstask是个引导。
+
+os3的用户态task能够破坏内核态的系统吗？
+不能
