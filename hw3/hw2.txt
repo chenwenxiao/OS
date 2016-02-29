@@ -1,0 +1,70 @@
+ucore的系统调用中参数传递代码分析。
+在kern/syscall/syscall.c中
+void
+syscall(void) {
+    struct trapframe *tf = current->tf;
+    uint32_t arg[5];
+    int num = tf->tf_regs.reg_eax;
+    if (num >= 0 && num < NUM_SYSCALLS) {
+        if (syscalls[num] != NULL) {
+            arg[0] = tf->tf_regs.reg_edx;
+            arg[1] = tf->tf_regs.reg_ecx;
+            arg[2] = tf->tf_regs.reg_ebx;
+            arg[3] = tf->tf_regs.reg_edi;
+            arg[4] = tf->tf_regs.reg_esi;
+            tf->tf_regs.reg_eax = syscalls[num](arg);
+            return ;
+        }
+    }
+    print_trapframe(tf);
+    panic("undefined syscall %d, pid = %d, name = %s.\n",
+            num, current->pid, current->name);
+}
+观察代码可以看出
+调用号num存在eax中，如果num合法，那么提取参数
+5个参数分别在edx，ecx，ebx，edi，esi中
+然后调用syscall，返回值存在eax中，覆盖了原来的调用号
+
+以getpid为例，分析ucore的系统调用中返回结果的传递代码。
+以hello.c为例
+hello.c getpid()
+ulib.c getpid()->sys_getpid()
+syscall.c sys_getpid()->syscall(SYS_getpid)，这里SYS_getpid为18，在unistd.h中define了。
+
+static inline int
+syscall(int num, ...) {
+    va_list ap;
+    va_start(ap, num);
+    uint32_t a[MAX_ARGS];
+    int i, ret;
+    for (i = 0; i < MAX_ARGS; i ++) {
+        a[i] = va_arg(ap, uint32_t);
+    }
+    va_end(ap);
+
+    asm volatile (
+        "int %1;"
+        : "=a" (ret)
+        : "i" (T_SYSCALL),
+          "a" (num),
+          "d" (a[0]),
+          "c" (a[1]),
+          "b" (a[2]),
+          "D" (a[3]),
+          "S" (a[4])
+        : "cc", "memory");
+    return ret;
+}
+
+在syscall中，num=18，之后的...代表更多的参数，使用va_arg和va_start之后会被放入数组a中。
+之后执行中断到达trapentry.S中
+alltraps先建立了一个trapframe的struct，保存现场
+然后给kernel建立的一个数据段%dx，%es。
+之后将%esp作为trap()的参数传入，调用trap
+从trap()返回后，还原esp
+最后在__trapret返回时，pop出之前的trapframe，还原现场
+将esp+8,也就是执行下一条指令
+iret，切换mode并返回
+
+以ucore lab8的answer为例，分析ucore 应用的系统调用编写和含义。
+以ucore lab8的answer为例，尝试修改并运行ucore OS kernel代码，使其具有类似Linux应用工具strace的功能，即能够显示出应用程序发出的系统调用，从而可以分析ucore应用的系统调用执行过程。
