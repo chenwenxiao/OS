@@ -67,4 +67,377 @@ alltraps先建立了一个trapframe的struct，保存现场
 iret，切换mode并返回
 
 以ucore lab8的answer为例，分析ucore 应用的系统调用编写和含义。
+lab8的kern与上面有些许不同，但是大同小异。
+以sys_write为例
+int
+write(int fd, void *base, size_t len) {
+    return sys_write(fd, base, len);
+}
+调用接口函数，跳转到sys_write
+
+int
+sys_write(int fd, void *base, size_t len) {
+    return syscall(SYS_write, fd, base, len);
+}
+查看宏
+
+#define SYS_write           103
+进入syscall，参数为调用号，文件号，输出串开头，输出串长度
+
+static inline int
+syscall(int num, ...) {
+    va_list ap;
+    va_start(ap, num);
+    uint32_t a[MAX_ARGS];
+    int i, ret;
+    for (i = 0; i < MAX_ARGS; i ++) {
+        a[i] = va_arg(ap, uint32_t);
+    }
+    va_end(ap);
+
+    asm volatile (
+        "int %1;"
+        : "=a" (ret)
+        : "i" (T_SYSCALL),
+          "a" (num),
+          "d" (a[0]),
+          "c" (a[1]),
+          "b" (a[2]),
+          "D" (a[3]),
+          "S" (a[4])
+        : "cc", "memory");
+    return ret;
+}
+这里的syscall和上一道题是一样的，不再累述。
+
 以ucore lab8的answer为例，尝试修改并运行ucore OS kernel代码，使其具有类似Linux应用工具strace的功能，即能够显示出应用程序发出的系统调用，从而可以分析ucore应用的系统调用执行过程。
+
+我们可以看到有很多的输出都是利用cprintf来的，但是如果我们在syscall里面使用cprintf，倘若cprintf又调用了sys_write，那么sys_write又调用syscall，syscall又调用cprintf。。。
+所以我追踪了cprintf的源码，发现：
+
+int
+cprintf(const char *fmt, ...) {
+    va_list ap;
+    int cnt;
+    va_start(ap, fmt);
+    cnt = vcprintf(fmt, ap);
+    va_end(ap);
+    return cnt;
+}
+
+
+int
+vcprintf(const char *fmt, va_list ap) {
+    int cnt = 0;
+    vprintfmt((void*)cputch, NO_FD, &cnt, fmt, ap);
+    return cnt;
+}
+
+
+void
+vprintfmt(void (*putch)(int, void*, int), int fd, void *putdat, const char *fmt, va_list ap) {
+    register const char *p;
+    register int ch, err;
+    unsigned long long num;
+    int base, width, precision, lflag, altflag;
+
+    while (1) {
+        while ((ch = *(unsigned char *)fmt ++) != '%') {
+            if (ch == '\0') {
+                return;
+            }
+            putch(ch, putdat, fd);
+        }
+
+        // Process a %-escape sequence
+        char padc = ' ';
+        width = precision = -1;
+        lflag = altflag = 0;
+
+    reswitch:
+        switch (ch = *(unsigned char *)fmt ++) {
+
+        // flag to pad on the right
+        case '-':
+            padc = '-';
+            goto reswitch;
+
+        // flag to pad with 0's instead of spaces
+        case '0':
+            padc = '0';
+            goto reswitch;
+
+        // width field
+        case '1' ... '9':
+            for (precision = 0; ; ++ fmt) {
+                precision = precision * 10 + ch - '0';
+                ch = *fmt;
+                if (ch < '0' || ch > '9') {
+                    break;
+                }
+            }
+            goto process_precision;
+
+        case '*':
+            precision = va_arg(ap, int);
+            goto process_precision;
+
+        case '.':
+            if (width < 0)
+                width = 0;
+            goto reswitch;
+
+        case '#':
+            altflag = 1;
+            goto reswitch;
+
+        process_precision:
+            if (width < 0)
+                width = precision, precision = -1;
+            goto reswitch;
+
+        // long flag (doubled for long long)
+        case 'l':
+            lflag ++;
+            goto reswitch;
+
+        // character
+        case 'c':
+            putch(va_arg(ap, int), putdat, fd);
+            break;
+
+        // error message
+        case 'e':
+            err = va_arg(ap, int);
+            if (err < 0) {
+                err = -err;
+            }
+            if (err > MAXERROR || (p = error_string[err]) == NULL) {
+                printfmt(putch, fd, putdat, "error %d", err);
+            }
+            else {
+                printfmt(putch, fd, putdat, "%s", p);
+            }
+            break;
+
+        // string
+        case 's':
+            if ((p = va_arg(ap, char *)) == NULL) {
+                p = "(null)";
+            }
+            if (width > 0 && padc != '-') {
+                for (width -= strnlen(p, precision); width > 0; width --) {
+                    putch(padc, putdat, fd);
+                }
+            }
+            for (; (ch = *p ++) != '\0' && (precision < 0 || -- precision >= 0); width --) {
+                if (altflag && (ch < ' ' || ch > '~')) {
+                    putch('?', putdat, fd);
+                }
+                else {
+                    putch(ch, putdat, fd);
+                }
+            }
+            for (; width > 0; width --) {
+                putch(' ', putdat, fd);
+            }
+            break;
+
+        // (signed) decimal
+        case 'd':
+            num = getint(&ap, lflag);
+            if ((long long)num < 0) {
+                putch('-', putdat, fd);
+                num = -(long long)num;
+            }
+            base = 10;
+            goto number;
+
+        // unsigned decimal
+        case 'u':
+            num = getuint(&ap, lflag);
+            base = 10;
+            goto number;
+
+        // (unsigned) octal
+        case 'o':
+            num = getuint(&ap, lflag);
+            base = 8;
+            goto number;
+
+        // pointer
+        case 'p':
+            putch('0', putdat, fd);
+            putch('x', putdat, fd);
+            num = (unsigned long long)(uintptr_t)va_arg(ap, void *);
+            base = 16;
+            goto number;
+
+        // (unsigned) hexadecimal
+        case 'x':
+            num = getuint(&ap, lflag);
+            base = 16;
+        number:
+            printnum(putch, fd, putdat, num, base, width, padc);
+            break;
+
+        // escaped '%' character
+        case '%':
+            putch(ch, putdat, fd);
+            break;
+
+        // unrecognized escape sequence - just print it literally
+        default:
+            putch('%', putdat, fd);
+            for (fmt --; fmt[-1] != '%'; fmt --)
+                /* do nothing */;
+            break;
+        }
+    }
+}
+
+这里发现底层的调用都是putch，而putch是传入的函数指针，对于vcprintf来说传入的时cputch。
+
+void
+cputchar(int c) {
+    cons_putc(c);
+}
+
+
+void
+cons_putc(int c) {
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        lpt_putc(c);
+        cga_putc(c);
+        serial_putc(c);
+    }
+    local_intr_restore(intr_flag);
+
+}
+
+上面的local_intr_save是用作保存现场，我们先看后面的3个函数
+static void
+lpt_putc(int c) {
+    if (c != '\b') {
+        lpt_putc_sub(c);
+    }
+    else {
+        lpt_putc_sub('\b');
+        lpt_putc_sub(' ');
+        lpt_putc_sub('\b');
+    }
+}
+
+static void
+lpt_putc_sub(int c) {
+    int i;
+    for (i = 0; !(inb(LPTPORT + 1) & 0x80) && i < 12800; i ++) {
+        delay();
+    }
+    outb(LPTPORT + 0, c);
+    outb(LPTPORT + 2, 0x08 | 0x04 | 0x01);
+    outb(LPTPORT + 2, 0x08);
+}
+
+这里的已经接近底层汇编了，其中outb,inb等等都可以在x86.h中找到对应的代码。
+对于另外两个函数：
+
+/* cga_putc - print character to console */
+static void
+cga_putc(int c) {
+    // set black on white
+    if (!(c & ~0xFF)) {
+        c |= 0x0700;
+    }
+
+    switch (c & 0xff) {
+    case '\b':
+        if (crt_pos > 0) {
+            crt_pos --;
+            crt_buf[crt_pos] = (c & ~0xff) | ' ';
+        }
+        break;
+    case '\n':
+        crt_pos += CRT_COLS;
+    case '\r':
+        crt_pos -= (crt_pos % CRT_COLS);
+        break;
+    default:
+        crt_buf[crt_pos ++] = c;     // write the character
+        break;
+    }
+
+    // What is the purpose of this?
+    if (crt_pos >= CRT_SIZE) {
+        int i;
+        memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
+        for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i ++) {
+            crt_buf[i] = 0x0700 | ' ';
+        }
+        crt_pos -= CRT_COLS;
+    }
+
+    // move that little blinky thing
+    outb(addr_6845, 14);
+    outb(addr_6845 + 1, crt_pos >> 8);
+    outb(addr_6845, 15);
+    outb(addr_6845 + 1, crt_pos);
+}
+
+也只调用了底层汇编。
+最后一个也是，都没有经过syscall
+
+static void
+serial_putc_sub(int c) {
+    int i;
+    for (i = 0; !(inb(COM1 + COM_LSR) & COM_LSR_TXRDY) && i < 12800; i ++) {
+        delay();
+    }
+    outb(COM1 + COM_TX, c);
+}
+
+所以说直接在syscall里面加入代码是满足题目要求的，
+但是要是一个有梦想的人，想想就觉得不对，write也是sys_write，
+凭什么cprintf就可以不经过系统调用呢？
+一个成熟的系统应当是没有cprintf这种歪们邪道的。
+那该怎么做？
+很简单：
+对于所有的sys_write新增一个参数：sys_log，默认为0表示记录
+当sys_write执行syscall时，把sys_log置为1，那么下一次就不会再在syscall中调用sys_write，死循环被终结。
+fd_console表示要输出到的屏幕
+sys_call_arg_str表示对应函数名+参数的生成字符串，例如"sys_write(1, "aaa", 3)"
+sys_call_arg_len表示对应函数名+参数的生成字符串的长度，例如12
+sys_call_ret_str，例如“= 0”
+sys_call_ret_len，例如3
+
+void
+syscall(void) {
+    struct trapframe *tf = current->tf;
+    uint32_t arg[5];
+    int num = tf->tf_regs.reg_eax;
+    if (num >= 0 && num < NUM_SYSCALLS) {
+        if (syscalls[num] != NULL) {
+            arg[0] = tf->tf_regs.reg_edx;
+            arg[1] = tf->tf_regs.reg_ecx;
+            arg[2] = tf->tf_regs.reg_ebx;
+            arg[3] = tf->tf_regs.reg_edi;
+            arg[4] = tf->tf_regs.reg_esi;
+            int log = arg[3];
+            if (num != SYS_write)
+                num = 0;
+            if (num == 0)
+                sys_write(fd_console, sys_call_arg_str(num, arg), sys_call_arg_len(num, arg), 1);
+            tf->tf_regs.reg_eax = syscalls[num](arg);
+            if (num == 0)
+                sys_write(fd_console, sys_call_ret_str(tf->tf_regs.reg_eax), sys_call_arg_len(tf->tf_regs.reg_eax), 1);
+            return ;
+        }
+    }
+    print_trapframe(tf);
+    panic("undefined syscall %d, pid = %d, name = %s.\n",
+            num, current->pid, current->name);
+}
+
+都写在代码里了，至于使用cprintf的方法，就是把sys_write替换成cprinntf，然后把log去掉罢了，这个就非常简单了。
