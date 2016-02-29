@@ -1,0 +1,96 @@
+通过分析lab1_ex0了解Linux应用的系统调用编写和含义。(w2l1)
+
++ 采分点：说明了objdump，nm，file的大致用途，说明了系统调用的具体含义
+- 答案没有涉及上述两个要点；（0分）
+- 答案对上述两个要点中的某一个要点进行了正确阐述（1分）
+- 答案对上述两个要点进行了正确阐述（2分）
+- 答案除了对上述两个要点都进行了正确阐述外，还进行了扩展和更丰富的说明（3分）
+可以从lab1_ex0.s中看到，linux中系统调用的方法是：
+1.将调用号放入eax寄存器
+2.将后续参数放入ebx，ecx，edx，esi和edi
+3.假如还有参数那么放入栈中
+4.调用80中断
+5.中断执行
+6.返回参数到eax，结束
+
+当然，我在去年曾经尝试过在32位和64位机器上做编译的实验(实验在下文中提及)，发现参数传递的方式不止上面着一种：
+还可以在栈中用类似于上几次SPOC的方法，全部参数压栈。这样的目的我认为时减少寄存器的使用，因为我们知道随着位数的增多，寄存器也是翻倍的增多的。但是在寄存器数目少的机器上，还需要保留通用寄存器，如16位，32位就不能奢侈地使用寄存器传参（其实也可以，但是编译器这么做必然是考虑到了效率，空间等等方方面面的因素的，只是说这样不如用栈的方法好）。
+
+objdump
+从elf或者可执行文件中反编译出汇编代码。
+在之前使用汇编和C的时候，为了研究在机器上C编译器加入的优化选项对于汇编代码的影响，经常需要用gcc的不同编译选项编译一次C代码，在对编译出的文件使用objdump进行返回汇编码。通过对比不同的汇编码来发现不同编译选项的影响。值得一提的是，在现代编译器中，往往会考虑到程序的安全性，所以加入了各种看上去匪夷所思的代码，例如随机栈位置，金丝雀等等。
+
+nm
+nm 命令显示关于指定 File 中符号的信息，文件可以是对象文件、可执行文件或对象文件库。nm 命令缺省情况下报告十进制符号表示法下的数字值。
+
+file
+file命令用来探测给定文件的类型。file命令对文件的检查分为文件系统、魔法幻数检查和语言检查3个过程。 
+以下为本目录下的使用实例：
+shiro@shiro ~/OS $ cd hw3
+shiro@shiro ~/OS/hw3 $ file hw1.txt
+hw1.txt: DOS executable (COM)
+shiro@shiro ~/OS/hw3 $ cd ..
+shiro@shiro ~/OS $ file 
+.git/ hw1/  hw2/  hw3/  
+shiro@shiro ~/OS $ file hw
+hw1/ hw2/ hw3/ 
+shiro@shiro ~/OS $ file hw3/
+hw3/: directory 
+shiro@shiro ~/OS $ 
+
+通过调试lab1_ex1了解Linux应用的系统调用执行过程。(w2l1)
+
++ 采分点：说明了strace的大致用途，说明了系统调用的具体执行过程（包括应用，CPU硬件，操作系统的执行过程）
+- 答案没有涉及上述两个要点；（0分）
+- 答案对上述两个要点中的某一个要点进行了正确阐述（1分）
+- 答案对上述两个要点进行了正确阐述（2分）
+- 答案除了对上述两个要点都进行了正确阐述外，还进行了扩展和更丰富的说明（3分）
+
+使用strace调试lab1_ex1。
+strace是一个跟踪程序的工具，其效果是按照目标程序调用顺序输出目标程序的系统调用和接受的参数。
+以下以lab1_ex1为例子：
+execve("./lab1-ex1", ["./lab1-ex1"], [/* 65 vars */]) = 0
+brk(0)                                  = 0x234e000
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f9b4f633000
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+open("/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+fstat(3, {st_mode=S_IFREG|0644, st_size=142730, ...}) = 0
+mmap(NULL, 142730, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f9b4f610000
+close(3)                                = 0
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+open("/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\0\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0\320\37\2\0\0\0\0\0"..., 832) = 832
+fstat(3, {st_mode=S_IFREG|0755, st_size=1840928, ...}) = 0
+mmap(NULL, 3949248, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f9b4f04e000
+mprotect(0x7f9b4f209000, 2093056, PROT_NONE) = 0
+mmap(0x7f9b4f408000, 24576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1ba000) = 0x7f9b4f408000
+mmap(0x7f9b4f40e000, 17088, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x7f9b4f40e000
+close(3)                                = 0
+mmap(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f9b4f60f000
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f9b4f60d000
+arch_prctl(ARCH_SET_FS, 0x7f9b4f60d740) = 0
+mprotect(0x7f9b4f408000, 16384, PROT_READ) = 0
+mprotect(0x600000, 4096, PROT_READ)     = 0
+mprotect(0x7f9b4f635000, 4096, PROT_READ) = 0
+munmap(0x7f9b4f610000, 142730)          = 0
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 7), ...}) = 0
+mmap(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f9b4f632000
+write(1, "hello world\n", 12hello world
+)           = 12
+exit_group(12)                          = ?
++++ exited with 12 +++
+
+分析系统调用：
+一开始时execve，运行当前目录下的lab1-ex1。
+然后时brk分配内存。
+access是判断文件是否存在。
+fstat获取文件信息。
+mmap则是将文件映射到内存。
+之后使用了mprotext设置内存权限。
+可以看出这一段是在动态加载运行库。
+从中间某一行开始，mmap的参数从3变为-1，这里时flag设置，-1是0xFFFFFFFF，意思是所有FLAG都使用，可以看出这里上下加载的内容性质不同。
+而mprotect的参数也不一样了，上面是NONE而下面时PORT_READ，意思时最上面的文件非常重要，没有访问权限，而后加载的可以查看。至于具体是那些文件，查看系统调用时看不到的，要查看相应源码才行。//TODO reading linux source...
+之后程序本身在最后的write处使用系统调用，也就是输出hello world
+exit_group用作退出
+上述分析包括了系统如何调用应用，应用如何执行，以及相对应的CPU操作。
