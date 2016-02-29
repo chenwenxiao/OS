@@ -1,0 +1,68 @@
+v9-cpu中os4.c的系统调用中参数传递代码分析。
+
+main()
+{
+  int *kstack;
+
+  stmr(5000);
+  ivec(alltraps);
+
+  task0_sp = &task0_kstack[1000];
+  task0_sp -= 2; *task0_sp = &task0;
+  task0_sp -= 2; *task0_sp = USER; // fault code
+  task0_sp -= 2; *task0_sp = 0; // a
+  task0_sp -= 2; *task0_sp = 0; // b
+  task0_sp -= 2; *task0_sp = 0; // c
+  task0_sp -= 2; *task0_sp = &task0_stack[1000]; //user stack
+  task0_sp -= 2; *task0_sp = &trapret;
+
+  kstack = task0_sp; //kernel stack
+
+  asm(LL, 4); // a = kstack
+  asm(SSP);   // sp = a
+  asm(LEV);   // return
+}
+
+在最后三行，sp=a=kstack，
+那么sp指向的内存中存储的正是trapret函数入口的地址
+LEV的作用时pc = *sp，那么pc到达trapret()，同时栈顶退栈
+
+  asm(POPA); //a=*sp, sp+=8 byte
+  asm(SUSP); //usp=a
+  asm(POPC); //c=*sp, sp+=8 byte
+  asm(POPB); //b=*sp, sp+=8 byte
+  asm(POPA); //a=*sp, sp+=8 byte
+  asm(RTI);  //return from interrupt, mode=USER, pc=&task0
+trapret中先把第一个弹出，也就是&task0_stack[1000]
+将task0_stack+1000作为usp，也就是用户栈产生了
+之后弹出c,b,a参数，调用RTI
+RTI会将mode置为USER，pc置为&task0
+也就是开始以用户态执行task0函数
+
+之后在调用write时，调用了asm(TRAP, S_write)，产生了一个系统调用
+在alltraps()中，传入了参数a,b,c，
+对于write而言，分别是输出port，字符串开始地址，串长度
+之后将当前的sp压栈
+在trap中，参数便是sp,c,b,a,fc和pc了
+在这里进行系统调用和处理
+
+v9-cpu中os4.c的系统调用中返回结果的传递代码分析。
+在trap中
+    case S_write: a = sys_write(a, b, c); break;
+这里的a是一个变量，后面没有返回
+在alltraps()中
+asm(POPA);
+asm(SUSP);
+asm(POPC);
+asm(POPB);
+asm(POPA);
+asm(RTI);
+还原了sp,c,b,a
+也就是说并没有将返回值以栈或者寄存器的形式传回
+
+理解v9-cpu中os4.c的系统调用编写和含义。
+在trap函数中，可以通过修改case中的代码
+来捕捉用户的操作，同时给出对应的处理，如3.5
+但是如我上次作业所说，这样可以导致内核态系统被破坏
+trap里面有未知的syscall就halt的语句，于是可以在用户态task中调用某个未知syscall就可以引起系统的崩溃。例如除了S_write以外的代码。
+还有一种可能，就是fc不是syscall也不是timer，可以看到alltraps里面是从PSHA开始的，那么在这之前PUSH一个奇怪的数作为fc，使得跳入unknown interrupt即可。
