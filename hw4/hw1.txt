@@ -176,15 +176,31 @@ static inline struct thread_info *current_thread_info(void)
 #include <stdio.h>
 void main(void)
 {
-	int ucs;
-	asm( "movl %%ecs, %0\n\t"
-		 :"=r"(ucs)::"ecs");
-	printf("%X", ucs);
+	int uax;
+	asm( "movl %%eax, %0\n\t"
+		 :"=r"(uax)::"eax");
+	printf("%X", uax);
 }
+
+注意，在内核态中输出，要使用printk函数
+参考
+printk(KERN_DEBUG "CPU %u irqstacks, hard=%p soft=%p\n",
+	     cpu, per_cpu(hardirq_ctx, cpu),  per_cpu(softirq_ctx, cpu));
+可以使用printk(KERN_DEBUG "%X", ucs)代替上述的printf完成输出
 
 一个汇编程序，可以查询对应寄存器的值，当然也可以使用上面的this_cpu_read_stable
 获取处cs，ds，fs的值就可以了
 当然ds，fs只是指向对应段的指针，还需要*一下
+
+具体的，在
+asm volatile("xchgl	%%ebx,%%esp	\n"
+       "call	*%%edi		\n"
+       "movl	%%ebx,%%esp	\n"
+       : "=a" (arg1), "=d" (arg2), "=b" (isp)
+       :  "0" (irq),   "1" (desc),  "2" (isp),
+    "D" (desc->handle_irq)
+       : "memory", "cc", "ecx");
+中call edi之前，插入上述代码即可
 
 比较不同特权级的中断切换时的堆栈变化差别；(challenge)写出一些简单的小程序（c or asm）来显示出不同特权级的的中断切换的堆栈变化情况。
 - [x]
@@ -206,3 +222,23 @@ OLD CS
 OLD EIP
 ERROR CODE
 放入栈中，这个栈是权限切换后的栈
+
+与上一个题目一样，由于只需要显示堆栈的变化，那么在kernel作修改就可以了
+具体的：
+具体的，在
+asm volatile("xchgl	%%ebx,%%esp	\n"
+       "call	*%%edi		\n"
+       "movl	%%ebx,%%esp	\n"
+       : "=a" (arg1), "=d" (arg2), "=b" (isp)
+       :  "0" (irq),   "1" (desc),  "2" (isp),
+    "D" (desc->handle_irq)
+       : "memory", "cc", "ecx");
+中call edi之前，由于esp已经到达了内核栈，依次
+popl %eax
+popl %ecx
+popl %edx
+...
+然后利用上
+asm( "movl %%ecs, %0\n\t"
+   :"=r"(ucs)::"ecs");
+在进行输出即可，当然也可以使用this_cpu_read_stable函数
