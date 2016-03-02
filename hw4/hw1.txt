@@ -1,0 +1,208 @@
+
+描述符特权级DPL、当前特权级CPL和请求特权级RPL的含义是什么？在哪些寄存器中这些字段？对应的访问条件是什么？ (challenge)写出一些简单的小程序（c or asm）来体现这些特权级的区别和联系。
+ ```
+  + 建议参见链接“ http://blog.csdn.net/better0332/article/details/3416749 ”对特权级的表述，并查阅指令手册。
+  -
+ ```
+- [x]
+
+>
+
+DPL存储在段描述符中，规定访问该段的权限级别(Descriptor Privilege Level)，每个段的DPL固定。存在DATA SEGMENT DESTRIPTOR的14,15位。
+CPL是当前进程的权限级别(Current Privilege Level)，是当前正在执行的代码所在的段的特权级，存在于cs寄存器的低两位。
+RPL说明的是进程对段访问的请求权限(Request Privilege Level)，是对于段选择子而言的，每个段选择子有自己的RPL，它说明的是进程对段访问的请求权限，而且RPL对每个段来说不是固定的，两次访问同一段时的RPL可以不同。存在TARGET SEGMENT SELECTOR的0，1位。
+要求访问数据段或堆栈段的程序的CPL≤待访问的数据段或堆栈段的DPL，同时选择子的RPL≤待访问的数据段或堆栈段的DPL，即程序访问数据段或堆栈段要遵循一个准则：只有相同或更高特权级的代码才能访问相应的数据段。
+
+助教说不能在LINUX上做，但是我试试看能不能做，发现可以，于是开始了漫长的LINUX源码分析
+
+先在一个程序中使用gdb
+调用i r命令
+可以直接得到cs，ds，fs的值
+rax            0x40052d	4195629
+rbx            0x0	0
+rcx            0x0	0
+rdx            0x7fffffffdf68	140737488346984
+rsi            0x7fffffffdf58	140737488346968
+rdi            0x1	1
+rbp            0x7fffffffde70	0x7fffffffde70
+rsp            0x7fffffffde70	0x7fffffffde70
+r8             0x7ffff7dd4e80	140737351863936
+r9             0x7ffff7dea560	140737351951712
+r10            0x7fffffffdd00	140737488346368
+r11            0x7ffff7a36dd0	140737348070864
+r12            0x400440	4195392
+r13            0x7fffffffdf50	140737488346960
+r14            0x0	0
+r15            0x0	0
+rip            0x400531	0x400531 <main+4>
+eflags         0x246	[ PF ZF IF ]
+cs             0x33	51
+ss             0x2b	43
+ds             0x0	0
+es             0x0	0
+fs             0x0	0
+gs             0x0	0
+
+LINUX下0～3的特权级，可以看到用户态下，cs的最后两位是11，ss为43，ds为0
+然后助教说查看下LINUX源代码，于是我下载了linux-source-3.13.0
+发现了__USER_CS，__USER_DS在内核中define出来了
+其他还有__KERNEL_CS，__KERNEL_DS
+之后我试图查找中断处理中，切换栈状态的代码
+
+
+这里是ira stack的定义
+arch/x86/include/asm/processor.h
+union irq_stack_union {
+	char irq_stack[IRQ_STACK_SIZE];
+	/*
+	 * GCC hardcodes the stack canary as %gs:40.  Since the
+	 * irq_stack is the object at %gs:0, we reserve the bottom
+	 * 48 bytes of the irq stack for the canary.
+	 */
+	struct {
+		char gs_base[40];
+		unsigned long stack_canary;
+	};
+};
+
+这里在执行irq，我会在后面代码中加入一些注释
+arch/x86/kernel
+bool handle_irq(unsigned irq, struct pt_regs *regs)
+{
+	struct irq_desc *desc;
+	int overflow;
+
+	overflow = check_stack_overflow();
+
+	desc = irq_to_desc(irq);
+	if (unlikely(!desc))
+		return false;
+  //在这里，判断了用户mode，以及excute_on_irq_stack
+  //而if语句后则是其他的代码了，例如print_stack_over等等
+  //desc貌似与我要找的栈切换无关
+	if (user_mode_vm(regs) || !execute_on_irq_stack(overflow, desc, irq)) {
+		if (unlikely(overflow))
+			print_stack_overflow();
+		desc->handle_irq(irq, desc);
+	}
+
+	return true;
+}
+
+
+static inline int
+execute_on_irq_stack(int overflow, struct irq_desc *desc, int irq)
+{
+	union irq_ctx *curctx, *irqctx;
+	u32 *isp, arg1, arg2;
+
+	curctx = (union irq_ctx *) current_thread_info();
+	irqctx = __this_cpu_read(hardirq_ctx);
+
+  //上面在获取栈的信息，如果要输出
+  //那么可以使用irqctx，curctx
+
+	/*
+	 * this is where we switch to the IRQ stack. However, if we are
+	 * already using the IRQ stack (because we interrupted a hardirq
+	 * handler) we can't do that and just have to keep using the
+	 * current stack (which is the irq stack already after all)
+	 */
+	if (unlikely(curctx == irqctx))
+		return 0;
+
+  //如果相等，那么退出，说明不需要栈切换
+
+	/* build the stack frame on the IRQ stack */
+	isp = (u32 *) ((char *)irqctx + sizeof(*irqctx));
+	irqctx->tinfo.task = curctx->tinfo.task;
+	irqctx->tinfo.previous_esp = current_stack_pointer;
+
+  //这里可以看到
+  //在irqctx中把当前的栈的tinfo.task和current_stack_pointer
+  //对应上课讲的压栈信息
+
+	if (unlikely(overflow))
+		call_on_stack(print_stack_overflow, isp);
+
+
+	asm volatile("xchgl	%%ebx,%%esp	\n"
+		     "call	*%%edi		\n"
+		     "movl	%%ebx,%%esp	\n"
+		     : "=a" (arg1), "=d" (arg2), "=b" (isp)
+		     :  "0" (irq),   "1" (desc),  "2" (isp),
+			"D" (desc->handle_irq)
+		     : "memory", "cc", "ecx");
+
+  //交换ebx和esp
+  //call edi应该是调用中断处理程序
+  //把esp还原
+
+	return 1;
+}
+
+之后我还查看了current.h中关于get_current的信息，发现是调用cpu的read
+
+arch/x86/include/asm/current.h
+
+static __always_inline struct task_struct *get_current(void)
+{
+	return this_cpu_read_stable(current_task);
+}
+
+#define current get_current()
+
+这个read只是一个宏调用，简单的获取对应值
+
+arch/x86/include/asm/percpu.h
+#define this_cpu_read_stable(var)	percpu_from_op("mov", var, "p" (&(var)))
+
+而上面涉及的另一个函数current_thread_info
+
+arch/x86/include/asm/thread_info.h
+
+static inline struct thread_info *current_thread_info(void)
+{
+	struct thread_info *ti;
+	ti = (void *)(this_cpu_read_stable(kernel_stack) +
+		      KERNEL_STACK_OFFSET - THREAD_SIZE);
+  //这个跟栈的实现有关了，LINUX中的栈在内存中如何分布
+  //目测是当前栈的位置就是内核栈-KERNEL_OFFSET-THREAD_SIZE
+	return ti;
+}
+
+到这里源码分析结束，输出对应cs，ds，fs寄存器的值就很容易了
+
+#include <stdio.h>
+void main(void)
+{
+	int ucs;
+	asm( "movl %%ecs, %0\n\t"
+		 :"=r"(ucs)::"ecs");
+	printf("%X", ucs);
+}
+
+一个汇编程序，可以查询对应寄存器的值，当然也可以使用上面的this_cpu_read_stable
+获取处cs，ds，fs的值就可以了
+当然ds，fs只是指向对应段的指针，还需要*一下
+
+比较不同特权级的中断切换时的堆栈变化差别；(challenge)写出一些简单的小程序（c or asm）来显示出不同特权级的的中断切换的堆栈变化情况。
+- [x]
+
+>
+
+如果没有权限切换：
+OLD EFLAGS
+OLD CS
+OLD EIP
+ERROR CODE
+放入栈中
+
+如果有权限切换：
+OLD SS
+OLD ESP
+OLD EFLAGS
+OLD CS
+OLD EIP
+ERROR CODE
+放入栈中，这个栈是权限切换后的栈
