@@ -15,7 +15,7 @@ int main() {
 	freopen("input.txt", "r", stdin);
 	freopen("output.txt", "w", stdout);
 
-	for (int i = 0; i < 256; ++i) {
+	for (int i = 0; i < 128; ++i) {
 		string str;
 		cin >> str;
 		cin >> str;
@@ -24,17 +24,22 @@ int main() {
 	}
 
 	cin >> hex >> address;
-	cout << address;
 	
 	int pde = 17, pte, psy;
-	int pde_index = (address >> 11) & P;
-	int pte_index = (address >> 6 ) & P;
+	int pde_index = (address >> 10) & P;
+	int pte_index = (address >> 5 ) & P;
 	int psy_index = address & Q;
-	cout << hex << "pde index: " << pde_index << "pde contents: " << (pte = page[pde][pde_index]) << "valid:" << (pte >> 7);
+	pte = page[pde][pde_index];
+	cout << hex << "pde index: " << pde_index << " pde contents: " << pte << " valid:" << (pte >> 7) << " pfn:" << (pte & L) << endl;
+	if ((pte >> 7) == 0)
+		cout << "Fault (page directory entry not valid)" << endl;
 	pte = pte & L;
-	cout << hex << "pte index: " << pte_index << "contents: " << (psy = page[pte][pte_index]) << "valid:" << (psy >> 7);
+	psy = page[pte][pte_index];
+	cout << hex << "pte index: " << pte_index << " contents: " << psy << " valid:" << (psy >> 7) << " pfn:" << (psy & L) << endl;
+	if ((psy >> 7) == 0)
+		cout << "Fault (page table entry not valid)" << endl;
 	psy = psy & L;
-	cout << hex << "translate : " << (psy << 5) + psy_index << "contents: " << page[psy][psy_index];
+	cout << hex << "translate : " << (psy << 5) + psy_index << " contents: " << page[psy][psy_index] << endl;
 	
 
 	return 0;

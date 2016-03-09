@@ -1,0 +1,3 @@
+pde index: 0 pde contents: da valid:1 pfn:5a
+pte index: 1e contents: 85 valid:1 pfn:5
+translate : bf contents: f

@@ -1,0 +1,3 @@
+pde index: b pde contents: c4 valid:1 pfn:44
+pte index: 0 contents: d7 valid:1 pfn:57
+translate : ae3 contents: 16
