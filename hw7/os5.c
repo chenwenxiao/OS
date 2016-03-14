@@ -152,10 +152,9 @@ setup_kernel_paging()
   for (i = 0; i < 16; ++i)
     pg_tbl[i] = pg_dir + 1024 * (i + 1);
   for (i = 0, j = KERSTART; i < 16; ++i, j += 1024 * PAGE)
-    pg_dir[j >> 22] = (uint) pg_tbl[i] | PTE_P | PTE_W;
-  for (i = 0; i < 16; ++i)
-    for (j = 0; j < 1024; ++j)
-      pg_tbl[i][j] = (j << 12) | PTE_P | PTE_W;
+    pg_dir[j >> 22] = (uint) pg_tbl[i] | PTE_P | PTE_W |PTE_U;
+  for (i = 0; i < 16 * 1024; ++i)
+      pg_tbl[0][i] = (i << 12) | PTE_P | PTE_W |PTE_U;
   *pg_dir = pg_dir[(uint) KERSTART >> 22];
 }
 
