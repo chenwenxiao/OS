@@ -1,0 +1,3 @@
+pde index: 7 pde contents: bd valid:1 pfn:3d
+pte index: 13 contents: 16 valid:0 pfn:16
+To Disk Sector Address : 2ef contents: 0

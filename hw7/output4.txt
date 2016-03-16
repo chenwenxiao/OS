@@ -1,0 +1,3 @@
+pde index: 2 pde contents: a1 valid:1 pfn:21
+pte index: 17 contents: 7f valid:0 pfn:7f
+To Disk Sector Address : 1016 contents: 0

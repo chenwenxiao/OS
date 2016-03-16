@@ -1,0 +1,3 @@
+pde index: 7 pde contents: bd valid:1 pfn:3d
+pte index: 0 contents: f6 valid:1 pfn:76
+To Physical Address : ed3 contents: 12
