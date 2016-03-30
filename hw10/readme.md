@@ -4,4 +4,4 @@
 
     cprintf("idleproc = %d, initproc = %d\n", idleproc->pid, initproc->pid);
 
-可以参见代码[init.c](https://github.com/chenwenxiao/OS/new/master/hw10/init.c) 
+可以参见代码[init.c](https://github.com/chenwenxiao/OS/blob/master/hw10/init.c) 
