@@ -1,0 +1,6 @@
+Do proc 0 from time 0 to 3
+Do proc 1 from time 4 to 4
+Do proc 1 from time 5 to 6
+Do proc 2 from time 7 to 16
+Do proc 0 from time 17 to 22
+Done
