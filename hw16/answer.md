@@ -28,6 +28,8 @@ cv->owner->next_count对应的时mt.next_count，也就是由于发出signal而�
 
 现在的实现是Hoare的，会在Signal之后立即执行wait的进程，另一种实现参见本目录下的代码
 
+具体的方式就是在wait到了所需要的变量后，及时把mutex还给原来的进程，让signal的线程继续执行。
+
 # BUG
 
 有BUG，参见第一题和第二题中所述
