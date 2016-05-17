@@ -274,7 +274,7 @@ class fs:
         if self.data[self.inodes[pnum].getAddr()].getFreeEntries() <= 0:
             return -1
         # if the newfile was already in parent dir?
-        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile) <= 0:
+        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile):
             return -1
         # now, find inumber of target
         tnum = self.nameToInum[target]
@@ -297,7 +297,7 @@ class fs:
         if self.data[self.inodes[pnum].getAddr()].getFreeEntries() <= 0:
             return -1
         # if the newfile was already in parent dir?
-        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile) <= 0:
+        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile):
             return -1
         # now, find inumber of target
         inum = self.inodeAlloc()
@@ -325,7 +325,7 @@ class fs:
         if self.data[self.inodes[pnum].getAddr()].getFreeEntries() <= 0:
             return -1
         # have to make sure file name is unique
-        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile) <= 0:
+        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile):
             return -1
         # find free inode
         fnum = self.inodeAlloc()
