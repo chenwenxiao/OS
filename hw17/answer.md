@@ -23,4 +23,4 @@
 ### PRO3
 
 实现soft link机制，并设计测试用例说明你实现的正确性。
-见代码中的DoSoftLink部分，方案是在block中加入target属性，指向被软连接的文件
+见代码中的DoSoftLink部分，方案是在block中加入target属性，指向被软连接的文件，只有type为s也就是软连接文件才具有这种属性
