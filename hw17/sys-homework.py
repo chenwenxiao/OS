@@ -248,16 +248,16 @@ class fs:
 
     # 2013011317
         # IF inode.refcnt ==1, THEN free data blocks first, then free inode, ELSE dec indoe.refcnt
-        if self.inodes[inum].refcnt == 1:
+        if self.inodes[inum].refCnt == 1:
             addr = self.inodes[inum].getAddr()
             if addr > 0:
                 self.dataFree(addr)
             self.inodeFree(inum)
         else:
-            self.inode[inum].decRefCnt()
+            self.inodes[inum].decRefCnt()
         # remove from parent directory: delete from parent inum, delete from parent addr
         pnum = self.nameToInum[self.getParent(tfile)];
-        self.data[self.inode[pnum].getAddr()].delDirEntry(tfile)
+        self.data[self.inodes[pnum].getAddr()].delDirEntry(tfile)
         self.inodes[pnum].decRefCnt()
     # DONE
 
@@ -283,8 +283,8 @@ class fs:
         # inc parent ref count
         self.inodes[pnum].incRefCnt()
         # now add to directory
-        self.data[pnum].addDirEntry(newfile, tnum)
-        self.data[tnum].incRefCnt()
+        self.data[self.inodes[pnum].getAddr()].addDirEntry(newfile, tnum)
+        self.inodes[tnum].incRefCnt()
     # DONE
         return tnum
 
@@ -305,11 +305,11 @@ class fs:
         if inum < 0 or dnum < 0:
             return -1
         # inc parent ref count
+        self.inodes[pnum].incRefCnt()
         # now add to directory
         self.inodes[inum].setAll('s', dnum, 1)
         self.data[dnum].setType('s')
         self.data[dnum].target = target
-        self.inodes[pnum].incRefCnt()
         self.data[self.inodes[pnum].getAddr()].addDirEntry(newfile, inum)
     # DONE
         return inum
