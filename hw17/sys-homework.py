@@ -164,13 +164,13 @@ class inode:
     def free(self):
         self.ftype = 'free'
         self.addr  = -1
-        
+
 
 class fs:
     def __init__(self, numInodes, numData):
         self.numInodes = numInodes
         self.numData   = numData
-        
+
         self.ibitmap = bitmap(self.numInodes)
         self.inodes  = []
         for i in range(self.numInodes):
@@ -180,7 +180,7 @@ class fs:
         self.data    = []
         for i in range(self.numData):
             self.data.append(block('free'))
-    
+
         # root inode
         self.ROOT = 0
 
@@ -230,7 +230,7 @@ class fs:
     def dataFree(self, bnum):
         self.dbitmap.free(bnum)
         self.data[bnum].free()
-        
+
     def getParent(self, name):
         tmp = name.split('/')
         if len(tmp) == 2:
@@ -287,8 +287,8 @@ class fs:
         self.data[tnum].incRefCnt()
     # DONE
         return tnum
-        
-        
+
+
     def createSoftLink(self, target, newfile, parent):
     # 2013011317
         # find info about parent
@@ -313,8 +313,8 @@ class fs:
         self.data[self.inodes[pnum].getAddr()].addDirEntry(newfile, inum)
     # DONE
         return inum
-        
-        
+
+
     def createFile(self, parent, newfile, ftype):
     # 2013011317
         # find info about parent
@@ -326,7 +326,7 @@ class fs:
             return -1
         # have to make sure file name is unique
         if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile) <= 0:
-            return -1        
+            return -1
         # find free inode
         fnum = self.inodeAlloc()
         if fnum < 0:
@@ -363,13 +363,13 @@ class fs:
                 return -1
             if self.inodes[target].getType == 's':
                 return -1
-            return self.writeFile(targe, data)
+            return self.writeFile(target, data)
         # file is full?
         if curSize == 1:
             return -1
         # no data blocks left
         dnum = self.dataAlloc()
-        if dname == -1:
+        if dnum == -1:
             return -1
         # write file data
         self.inodes[inum].setAddr(dnum)
@@ -380,7 +380,7 @@ class fs:
         if printOps:
             print 'fd=open("%s", O_WRONLY|O_APPEND); write(fd, buf, BLOCKSIZE); close(fd);' % tfile
         return 0
-            
+
     def doDelete(self):
         dprint('doDelete')
         if len(self.files) == 0:
@@ -440,7 +440,7 @@ class fs:
                 print 'link("%s", "%s");' % (target, fullName)
             return 0
         return -1
-        
+
     def doCreate(self, ftype):
         dprint('doCreate')
         parent = self.dirs[int(random.random() * len(self.dirs))]
@@ -491,7 +491,7 @@ class fs:
         print ''
         self.dump()
         print ''
-        
+
         for i in range(numRequests):
             if printOps == False:
                 print 'Which operation took place?'
@@ -537,8 +537,8 @@ class fs:
 parser = OptionParser()
 
 parser.add_option('-s', '--seed',        default=0,     help='the random seed',                      action='store', type='int', dest='seed')
-parser.add_option('-i', '--numInodes',   default=8,     help='number of inodes in file system',      action='store', type='int', dest='numInodes') 
-parser.add_option('-d', '--numData',     default=8,     help='number of data blocks in file system', action='store', type='int', dest='numData') 
+parser.add_option('-i', '--numInodes',   default=8,     help='number of inodes in file system',      action='store', type='int', dest='numInodes')
+parser.add_option('-d', '--numData',     default=8,     help='number of data blocks in file system', action='store', type='int', dest='numData')
 parser.add_option('-n', '--numRequests', default=10,    help='number of requests to simulate',       action='store', type='int', dest='numRequests')
 parser.add_option('-r', '--reverse',     default=False, help='instead of printing state, print ops', action='store_true',        dest='reverse')
 parser.add_option('-p', '--printFinal',  default=False, help='print the final set of files/dirs',    action='store_true',        dest='printFinal')
