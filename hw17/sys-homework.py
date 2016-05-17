@@ -50,6 +50,7 @@ class block:
         self.maxUsed = 32
         self.dirList = []
         self.data    = ''
+        self.target  = ''
 
     def dump(self):
         if self.ftype == 'free':
@@ -285,8 +286,35 @@ class fs:
         self.data[pnum].addDirEntry(newfile, tnum)
         self.data[tnum].incRefCnt()
     # DONE
-        return tinum
-
+        return tnum
+        
+        
+    def createSoftLink(self, target, newfile, parent):
+    # 2013011317
+        # find info about parent
+        pnum = self.nameToInum[parent]
+        # is there room in the parent directory?
+        if self.data[self.inodes[pnum].getAddr()].getFreeEntries() <= 0:
+            return -1
+        # if the newfile was already in parent dir?
+        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile) <= 0:
+            return -1
+        # now, find inumber of target
+        inum = self.inodeAlloc()
+        dnum = self.dataAlloc()
+        if inum < 0 or dnum < 0:
+            return -1
+        # inc parent ref count
+        # now add to directory
+        self.inodes[inum].setAll('s', dnum, 1)
+        self.data[dnum].setType('s')
+        self.data[dnum].target = target
+        self.inodes[pnum].incRefCnt()
+        self.data[self.inodes[pnum].getAddr()].addDirEntry(newfile, inum)
+    # DONE
+        return inum
+        
+        
     def createFile(self, parent, newfile, ftype):
     # 2013011317
         # find info about parent
@@ -319,7 +347,7 @@ class fs:
         # and add to directory of parent
         self.data[self.inodes[pnum].getAddr()].addDirEntry(newfile, fnum)
     # DONE
-        return inum
+        return fnum
 
     def writeFile(self, tfile, data):
         inum = self.nameToInum[tfile]
@@ -327,6 +355,15 @@ class fs:
         dprint('writeFile: inum:%d cursize:%d refcnt:%d' % (inum, curSize, self.inodes[inum].getRefCnt()))
 
     # 2013011317
+        if self.inodes[inum].getType == 's':
+            target = self.data[self.inodes[inum].getAddr].target
+            if target not in self.nameToInum:
+                return -1
+            if self.inodes[self.nameToInum[target]].getType() == 'free':
+                return -1
+            if self.inodes[target].getType == 's':
+                return -1
+            return self.writeFile(targe, data)
         # file is full?
         if curSize == 1:
             return -1
@@ -377,7 +414,33 @@ class fs:
                 print 'link("%s", "%s");' % (target, fullName)
             return 0
         return -1
-    
+
+    def doSoftLink(self):
+        dprint('doSoftLink')
+        if len(self.files) == 0:
+            return -1
+        parent = self.dirs[int(random.random() * len(self.dirs))]
+        nfile = self.makeName()
+
+        # pick random target
+        target = self.files[int(random.random() * len(self.files))]
+
+        # get full name of newfile
+        if parent == '/':
+            fullName = parent + nfile
+        else:
+            fullName = parent + '/' + nfile
+
+        dprint('try createLink(%s %s %s)' % (target, nfile, parent))
+        inum = self.createSoftLink(target, nfile, parent)
+        if inum >= 0:
+            self.files.append(fullName)
+            self.nameToInum[fullName] = inum
+            if printOps:
+                print 'link("%s", "%s");' % (target, fullName)
+            return 0
+        return -1
+        
     def doCreate(self, ftype):
         dprint('doCreate')
         parent = self.dirs[int(random.random() * len(self.dirs))]
