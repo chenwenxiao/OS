@@ -288,15 +288,36 @@ class fs:
         return tinum
 
     def createFile(self, parent, newfile, ftype):
-    # YOUR CODE, YOUR ID
+    # 2013011317
         # find info about parent
+        if parent not in self.nameToInum:
+            return -1
+        pnum = self.nameToInum[parent]
         # is there room in the parent directory?
+        if self.data[self.inodes[pnum].getAddr()].getFreeEntries() <= 0:
+            return -1
         # have to make sure file name is unique
+        if self.data[self.inodes[pnum].getAddr()].dirEntryExists(newfile) <= 0:
+            return -1        
         # find free inode
+        fnum = self.inodeAlloc()
+        if fnum < 0:
+            return -1
+        self.inodes[fnum].setType(ftype)
         # if a directory, have to allocate directory block for basic (., ..) info
+        if ftype == 'd':
+            dnum = self.dataAlloc()
+            self.data[dnum].setType(ftype)
+            self.data[dnum].addDirEntry('.', fnum)
+            self.data[dnum].addDirEntry('..', pnum)
+            self.inodes[fnum].setAll(ftype, dnum, 1)
+            self.inodes[fnum].incRefCnt()
+            # relation : p -> f -> d
         # now ok to init inode properly
         # inc parent ref count
+        self.inodes[pnum].incRefCnt()
         # and add to directory of parent
+        self.data[self.inodes[pnum].getAddr()].addDirEntry(newfile, fnum)
     # DONE
         return inum
 
@@ -305,10 +326,18 @@ class fs:
         curSize = self.inodes[inum].getSize()
         dprint('writeFile: inum:%d cursize:%d refcnt:%d' % (inum, curSize, self.inodes[inum].getRefCnt()))
 
-    # YOUR CODE, YOUR ID
+    # 2013011317
         # file is full?
+        if curSize == 1:
+            return -1
         # no data blocks left
+        dnum = self.dataAlloc()
+        if dname == -1:
+            return -1
         # write file data
+        self.inodes[inum].setAddr(dnum)
+        self.data[dnum].setType('f')
+        self.data[dnum].addData(data)
     # DONE
 
         if printOps:
